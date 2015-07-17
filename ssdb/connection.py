@@ -12,7 +12,7 @@ from ssdb._compat import (b, xrange, imap, byte_to_chr, unicode, bytes, long,
 from ssdb.utils import get_integer
 from ssdb.exceptions import (
     RES_STATUS_MSG,
-    RES_STATUS,    
+    RES_STATUS,
     SSDBError,
     TimeoutError,
     ConnectionError,
@@ -23,7 +23,7 @@ from ssdb.exceptions import (
     NoScriptError,
     ExecAbortError,
     )
-        
+
 SYM_LF = b('\n')
 SYM_EMPTY = b('')
 
@@ -111,9 +111,9 @@ class SocketBuffer(object):
                 data_length = len(data)
                 self.bytes_written += data_length
                 marker += data_length
-                
+
                 if length is not None and length > marker:
-                    continue                
+                    continue
                 break
         except socket.timeout:
             raise TimeoutError("Timeout reading from socket")
@@ -121,7 +121,7 @@ class SocketBuffer(object):
             e = sys.exc_info()[1]
             raise ConnectionError("Error while reading from socket:%s"
                                   %(e.args,))
-        
+
 
     def readline(self):
         buf = self._buffer
@@ -131,7 +131,7 @@ class SocketBuffer(object):
             # there's more data in the socket that we need
             self._read_from_socket()
             buf.seek(self.bytes_read)
-            data = buf.readline()            
+            data = buf.readline()
         self.bytes_read += len(data)
         # purge the buffer when we've consumed it all so it doesn't
         # grow forever
@@ -150,7 +150,7 @@ class SocketBuffer(object):
         self._buffer.close()
         self._buffer = None
         self._sock = None
-    
+
 class PythonParser(BaseParser):
     """
     Plain Python parsing class
@@ -160,7 +160,7 @@ class PythonParser(BaseParser):
     def __init__(self, socket_read_size):
         self.socket_read_size = socket_read_size
         self._sock = None
-        self._buffer = None    
+        self._buffer = None
 
     def __del__(self):
         try:
@@ -173,10 +173,10 @@ class PythonParser(BaseParser):
         Called when the socket connects
         """
         self._sock = connection._sock
-        self._buffer = SocketBuffer(self._sock, self.socket_read_size)        
+        self._buffer = SocketBuffer(self._sock, self.socket_read_size)
         if connection.decode_responses:
             self.encoding = connection.encoding
-            
+
     def on_disconnect(self):
         "Called when the socket disconnects"
         if self._sock is not None:
@@ -188,7 +188,7 @@ class PythonParser(BaseParser):
         self.encoding = None
 
     def can_read(self):
-        return self._buffer and bool(self._buffer.length)            
+        return self._buffer and bool(self._buffer.length)
 
     def read_response(self):
         try:
@@ -226,26 +226,27 @@ class Connection(object):
     """
 
     description_format = "Connection<host=%(host)s,port=%(port)s>"
-    
-    def __init__(self, host="127.0.0.1",port=8888,socket_timeout=None,
+
+    def __init__(self, host="127.0.0.1",port=8888, password=None, socket_timeout=None,
                  socket_connect_timeout=None,socket_keepalive=False,
-                 socket_keepalive_options=None,retry_on_timeout=False, 
+                 socket_keepalive_options=None,retry_on_timeout=False,
                  encoding='utf-8', encoding_errors='strict',
                  decode_responses=False, parser_class=DefaultParser,
                  socket_read_size=65536):
-        self.pid = os.getpid()        
+        self.pid = os.getpid()
         self.host = host
-        self.port = port
+        self.port = int(port)
+        self.password = password
         self._sock = None
         self.socket_timeout = socket_timeout
         self.socket_connect_timeout = socket_connect_timeout or socket_timeout
         self.socket_keepalive = socket_keepalive
         self.socket_keepalive_options = socket_keepalive_options or {}
-        self.retry_on_timeout = retry_on_timeout        
+        self.retry_on_timeout = retry_on_timeout
         self.encoding = encoding
         self.encoding_errors = encoding_errors
         self.decode_responses = decode_responses
-        self._parser = parser_class(socket_read_size=socket_read_size)        
+        self._parser = parser_class(socket_read_size=socket_read_size)
         self._description_args = {
             'host': self.host,
             'port': self.port,
@@ -294,7 +295,7 @@ class Connection(object):
         # run any user callbacks. right now the only internal callback
         # is for pubsub channel/pattern resubscription
         for callback in self._connect_callbacks:
-            callback(self)        
+            callback(self)
 
     def _connect(self):
         """
@@ -317,7 +318,7 @@ class Connection(object):
                 if self.socket_keepalive:
                     sock.setsockopt(socket.SOL_SOCKET,socket.SO_KEEPALIVE, 1)
                     for k, v in iteritems(self.socket_keepalive_options):
-                        sock.setsockopt(socket.SOL_TCP, k, v)                
+                        sock.setsockopt(socket.SOL_TCP, k, v)
 
                 # set the socket_connect_timeout before we connect
                 sock.settimeout(self.socket_connect_timeout)
@@ -325,7 +326,7 @@ class Connection(object):
                 sock.connect(socket_address)
                 # set the socket_timeout now that we're connected
                 sock.settimeout(self.socket_timeout)
-                return sock                
+                return sock
 
             except socket.error as _:
                 err = _
@@ -349,12 +350,17 @@ class Connection(object):
         else:
             return "Error %s connecting %s:%s. %s." % \
                 (exception.args[0], self.host, self.port, exception.args[1])
-        
+
     def on_connect(self):
         """
         Initialize the connection
         """
         self._parser.on_connect(self)
+
+        if self.password:
+            self.send_command("auth", self.password)
+            if nativestr(self.read_response()[0]) != 'ok':
+                raise AuthenticationError("Invalid Password")
 
     def disconnect(self):
         """
@@ -372,7 +378,7 @@ class Connection(object):
 
     def send_packed_command(self, command):
         """
-        Send an already packed command to the SSDB server        
+        Send an already packed command to the SSDB server
         """
         if not self._sock:
             self.connect()
@@ -380,10 +386,10 @@ class Connection(object):
             if isinstance(command, str):
                 command = [command]
             for item in command:
-                self._sock.sendall(item)            
+                self._sock.sendall(item)
         except socket.timeout:
             self.disconnect()
-            raise TimeoutError("Timeout writing to socket")            
+            raise TimeoutError("Timeout writing to socket")
         except socket.error:
             e = sys.exc_info()[1]
             self.disconnect()
@@ -410,7 +416,7 @@ class Connection(object):
             self.connect()
             sock = self._sock
         return self._parser.can_read() or \
-            bool(select([sock], [], [], timeout)[0])        
+            bool(select([sock], [], [], timeout)[0])
 
     def read_response(self):
         """
@@ -423,7 +429,6 @@ class Connection(object):
             raise
         if isinstance(response, ResponseError):
             raise response
-        #print(response)
         return response
 
     def encode(self, value):
@@ -431,11 +436,11 @@ class Connection(object):
         Return a bytestring representation of the value
         """
         if isinstance(value, Token):
-            return b(value.value)        
+            return b(value.value)
         if isinstance(value, bytes):
             return value
         elif isinstance(value, (int, long)):
-            value = b(str(value))        
+            value = b(str(value))
         elif isinstance(value, float):
             value = repr(value)
         elif not isinstance(value, basestring):
@@ -486,15 +491,15 @@ class Connection(object):
 
         if pieces:
             output.append(SYM_EMPTY.join(pieces))
-        return output        
-    
+        return output
+
 class ConnectionPool(object):
     """
     Generic connection pool.
 
         >>> from ssdb.client import SSDB
         >>> client = SSDB(connection_pool=ConnectionPool())
-        
+
     If max_connections is set, then this objectraises ssdb.ConnectionError when
     the pool's limit is reached. By default, TCP connections are created
     connection_class is specified. Any additionan keyword arguments are passed
@@ -511,12 +516,12 @@ class ConnectionPool(object):
         """
         max_connections = max_connections or 2 ** 31
         if not isinstance(max_connections, (int, long)) or max_connections < 0:
-            raise ValueError('"max_connections" must be a positive integer')        
+            raise ValueError('"max_connections" must be a positive integer')
         self.connection_class = connection_class
         self.connection_kwargs = connection_kwargs
         self.max_connections = max_connections
         self.reset()
-        
+
     def __repr__(self):
         return "%s<%s>" % (
             type(self).__name__,
@@ -528,7 +533,7 @@ class ConnectionPool(object):
         self._created_connections = 0
         self._available_connections = []
         self._in_use_connections = set()
-        self._check_lock = threading.Lock()    
+        self._check_lock = threading.Lock()
 
     def _checkpid(self):
         if self.pid != os.getpid():
@@ -567,10 +572,10 @@ class ConnectionPool(object):
         """
         self._checkpid()
         if connection.pid != self.pid:
-            return        
+            return
         self._in_use_connections.remove(connection)
         self._available_connections.append(connection)
-            
+
     def disconnect(self):
         """
         Disconnects all connections in the pool.
@@ -580,7 +585,7 @@ class ConnectionPool(object):
         for connection in all_conns:
             connection.disconnect()
 
-            
+
 class BlockingConnectionPool(ConnectionPool):
     """
     Thread-safe blocking connection pool::
@@ -634,7 +639,7 @@ class BlockingConnectionPool(ConnectionPool):
             try:
                 self.pool.put_nowait(None)
             except Full:
-                break            
+                break
 
         # Keep a list of actual connection instances so that we can
         # disconnect them later.
@@ -651,7 +656,7 @@ class BlockingConnectionPool(ConnectionPool):
         """
         Get a connection, blocking for ``self.timeout`` until a connection
         is available from the pool.
-        
+
         If the connection returned is ``None`` then creates a new connection.
         Because we use a last-in first-out queue, the existing connections
         (having been returned to the pool after the initial ``None`` values
@@ -670,7 +675,7 @@ class BlockingConnectionPool(ConnectionPool):
             connection = self.pool.get(block=True,timeout=self.timeout)
         except Empty:
             # Note that this is not caught by the redis client and will be
-            # raised unless handled by application code. If you want never to            
+            # raised unless handled by application code. If you want never to
             raise ConnectionError("No connection available.")
 
         # If the ``connection`` is actually ``None`` then that's a cue to make

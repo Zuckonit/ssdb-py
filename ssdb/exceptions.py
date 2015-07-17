@@ -9,13 +9,13 @@ RES_STATUS_MSG = {
     "ok": "Opreation successfully.",
     "not_found": "Not found.",
     "error": "SSDB error.",
-    "fail": "Operation failed.",    
+    "fail": "Operation failed.",
     "client_error": "Client or command error."
     }
 RES_STATUS = namedtuple('response_status', ','.join(response_status).upper())._make(response_status)
 
 class SSDBError(Exception):
-        pass
+    pass
 
 # python 2.5 doesn't implement Exception.__unicode__. Add it here to all
 # our exception types
@@ -26,7 +26,7 @@ if not hasattr(SSDBError, '__unicode__'):
         return unicode(self.args[0])
     SSDBError.__unicode__ = __unicode__
 
-    
+
 class AuthenticationError(SSDBError):
     pass
 
